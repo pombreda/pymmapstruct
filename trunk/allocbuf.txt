@@ -1,0 +1,38 @@
+Mmap is a module for data-sharing and persistence.  It provides a disk-backed string buffer of up to the length of the backing file.  Users may write data to the file in non-sequential access, and retrieve in later sessions.  Bytes may be changed by index into it.
+
+It is easy to locate a record if you know its index and the uniform length of it.  With variable-length records, such as ones containing strings, the user needs the offset of it into the file.  In order to write a new record into the file, the user needs to know what bytes are already allocated to existing records, which ones are free, and at what offset he can find a block long enough for his new record.
+
+PyMmapStruct accomplishes this by providing 'alloc' and 'free' methods on a AllocTree class.  AllocTree inherits from BufferTree, which provides 'add_at' and 'remove_at' entry points to the GNU PAVL binary search tree.  New blocks are added to the tree as they are no longer needed in the file.  Users may consume blocks by deleting them from the tree, and adding the block left over.  In this way, the tree models 'free segments'; entries correspond to contiguous blocks of undevoted bytes, and are removed from the tree when allocated with a call.
+
+The tree operates 'in place' per se.  Nodes as well as headers are stored on location in the mmap, adjoning the location which they describe.
+
+0
+1  freehead
+2  --free--
+3
+4
+5  --free--
+6  foot
+7  blockhead
+8  --allocated--
+9
+A
+B
+C
+D  --allocated--
+E  foot
+
+The 'nodehead' consists of enough bytes to participate in a PAVL tree: key, left, right, parent, and balance addresses and values.  The 'key' field is the size of the block it precedes, and a new node can be created with any 'leftovers'.
+
+0
+1  blockhead
+2  --allocated--
+3  foot
+4  freehead
+5  --free--
+6  foot
+7  
+
+Therefore, a block greater than or equal to a requested size can be located in log( N ) time, time proportional to the number of free nodes in the tree.
+
+Note that a file with fewer remaining bytes can take more nodes; the file starts with one free block, makes two allocations, and frees the first of them.  Then it has two free blocks, and some bytes from the middle are allocated prior.  Note further that this strategy makes small allocations inefficient, as 3 words accompany every individual reservation.
