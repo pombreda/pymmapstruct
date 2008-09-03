@@ -23,7 +23,14 @@ self     self
 'add_at' and 'remove_at' adapted from GNU PAVL library.
 '''
 
+import struct
+packI= struct.Struct( 'I' )
+packi= struct.Struct( 'i' )
 word= 4
+packI= struct.Struct( 'H' )
+packi= struct.Struct( 'h' )
+word= 2
+
 class Buffer(object):
 	def setI( self, offt, val ): raise NotImplemented
 	def getI( self, offt ): raise NotImplemented
@@ -103,7 +110,7 @@ class Node(object):
 	right= property( _getright, _setright )
 
 	def _getlink( self ):
-		return self.link( self.where, self._tree )
+		return self.Link( self.where, self._tree )
 	link= property( _getlink )
 
 	def _getplink( self ):
@@ -504,9 +511,6 @@ class BufferTree( Buffer ):
 							x.balance= y.balance= 0
 							y= x
 
-	def has_key( self, key ):
-		pass
-
 class AllocTree( BufferTree ):
 	nil= 0
 	sizeaddr= 1* word
@@ -647,10 +651,6 @@ class CheckingTree( AllocTree ):
 		self.check_used( self[ n ].right )
 
 import mmap
-import struct
-packI= struct.Struct( 'I' )
-packi= struct.Struct( 'i' )
-
 class MmapAllocTree( CheckingTree ):
 	def __init__( self, map ):
 		self.map= map
