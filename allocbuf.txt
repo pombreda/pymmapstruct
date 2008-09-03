@@ -2,9 +2,11 @@ Mmap is a module for data-sharing and persistence.  It provides a disk-backed st
 
 It is easy to locate a record if you know its index and the uniform length of it.  With variable-length records, such as ones containing strings, the user needs the offset of it into the file.  In order to write a new record into the file, the user needs to know what bytes are already allocated to existing records, which ones are free, and at what offset he can find a block long enough for his new record.
 
-PyMmapStruct accomplishes this by providing 'alloc' and 'free' methods on a AllocTree class.  AllocTree inherits from BufferTree, which provides 'add_at' and 'remove_at' entry points to the GNU PAVL binary search tree.  New blocks are added to the tree as they are no longer needed in the file.  Users may consume blocks by deleting them from the tree, and adding the block left over.  In this way, the tree models 'free segments'; entries correspond to contiguous blocks of undevoted bytes, and are removed from the tree when allocated with a call.
+PyMmapStruct facilitates this by providing 'alloc' and 'free' methods on a AllocTree class.  AllocTree inherits from BufferTree, which provides 'add_at' and 'remove_at' entry points to a GNU libavl PAVL binary search tree.  New blocks are added to the tree as they are no longer needed in the file, that is, as 'free' is called.  Users may consume blocks by deleting them from the tree, that is, by calling 'alloc', and adding the left over block.  In this way, the tree models 'free segments'; entries correspond to contiguous blocks of undevoted bytes, and are removed from the tree when allocated with a call.
 
 The tree operates 'in place' per se.  Nodes as well as headers are stored on location in the mmap, adjoning the location which they describe.
+
+The 'free' operation can create adjacent blocks of free memory.  To recycle resources and decrease fragmentation, they are joined.  In such a case, it is known what entry in the tree is desired to be removed-- the existing of the two newly adjoining nodes.  As its size does not identify it uniquely in the tree, an entry point to remove, 'remove_at', operates by identity, not by key.
 
 0
 1  freehead
@@ -36,3 +38,5 @@ The 'nodehead' consists of enough bytes to participate in a PAVL tree: key, left
 Therefore, a block greater than or equal to a requested size can be located in log( N ) time, time proportional to the number of free nodes in the tree.
 
 Note that a file with fewer remaining bytes can take more nodes; the file starts with one free block, makes two allocations, and frees the first of them.  Then it has two free blocks, and some bytes from the middle are allocated prior.  Note further that this strategy makes small allocations inefficient, as 3 words accompany every individual reservation.
+
+Direct questions and comments to castironpi at gmail dot com.
