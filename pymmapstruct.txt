@@ -1,0 +1,221 @@
+Introduction
+
+Dynamic memory allocation is widely in use for the task of
+constructing data structures during runtime of a program.  The
+proposed module extends this application to an arbitrary program-
+controlled subregion of memory, a "buffer", making available on a
+buffer the same entry points to dynamic allocation already in
+existence.
+
+Case Studies, Hypothetical
+
+A user has a file he is using either 1/ to persist binary data after
+the run of a single program (persistence) or 2/ share binary data
+between concurrently running programs (IPC / shared memory).  The data
+are records of variable types and lengths that can change over time.
+He wants to change a record that's already present in the file.  Here
+are two examples.
+
+Use Case 1: Hierarchical ElementTree-style data
+
+A user has an generic element hierarchy file like the one shown, which
+may or may not be stored sequentially as it is here.
+
+<a>
+  <b>
+    <c>Foo</c>
+  </b>
+  ...
+
+He wants to change "Foo" to "Foobar".
+
+<a>
+  <b>
+    <c>Foobar</c>
+  </b>
+  ...
+
+The change he wants to make is at the beginning of a 4MB file, and
+recopying the remainder is an unacceptable resource drain.
+
+Use Case 2: Web session logger
+
+A tutor application has written a plugin to a webbrowser that records
+the order of a user's mouse and keyboard activity during a browsing
+session, and makes them concurrently available to other applications
+in a suite, which are written in varying languages.  The user takes
+some action, such as surfing to a site or clicking on a link.  The
+browser plugin records that sequence into shared memory, where it is
+marked as acknowledged by the listener programs, and recycled back
+into an unused block.  URLs, user inputs, and link text can be of any
+length, so truncating them to fit a fixed length is not an option.
+
+General Problem
+
+These examples illustrate the problems of persistence and concurrency
+and interprocess communication (IPC).
+
+Existing Solutions - Persistence
+
+- Shelve - A Python Standard Library shelf object can store a random
+access dictionary mapping strings to pickled objects.  It does not
+provide for hierarchical data stores, and objects must be unpickled
+before they can be examined.
+- Relational Database - Separate tables of nodes, attributes, and
+text, and the relations between them are slow and unwieldy to
+reproduce the contents of a dynamic structure.  The VARCHAR data type
+still carries a maximum size, no more flexible than fixed-length
+records.  The speed tradeoff on RDBs is dubious: to increment an
+integer, the following string must be constructed, transmitted and
+received, parsed and interpreted, and honored:
+    UPDATE table_name SET column_name WHERE column_name = some_value
+There are no options for maintaining a pointer to data; it must be
+actively located on each update.  To contrast, the Python equivalent,
+    struct.Struct( 'I' ).pack_into( buffer, offset, value )
+writes an unsigned integer value directly at offset bytes into buffer.
+See below.
+- Comma-Separated Value files - These run into the same problem as the
+XML example: any changes result in requiring to recopy the entire
+contents of the file which occur behind the point of change.  See the
+csv module of Python.
+- Fixed-Length Records - These permit random access into the file, and
+never require recopying data, but constrain records and the fields in
+them to a maximum length.  Linked lists of contents suffice to
+represent variable-length data, but are a hassle when particular
+objects span one or more sectors.  (Perhaps an FLR module could one
+day become a part of Python.)
+
+Existing Solutions - Interprocess Communication
+
+- POSH - Python Object Sharing - A module currently in its alpha stage
+promises to make it possible to store Python objects directly in
+shared memory.  In its current form, its only entry point is 'fork',
+is only available on Unix, and does not offer persistence, only
+sharing.  See:
+    http://poshmodule.sourceforge.net/
+- Mapped/Shared Memory - Two processes can obtain handles to the same
+block of physical memory, in some cases being backed by a region on
+disk.  They can read and write to a region visible to each other, but
+without dynamic allocation, only sequential data.
+- Pipes & Sockets - Two processes can connect independent of language,
+and in the case of sockets, machine they're running on, but may only
+transmit data in serial, and must maintain internal state
+representations of the other in duplicate.
+
+Dynamic Allocation
+
+The general solution, dynamic memory allocation, is to maintain a
+metadata list of "free blocks" that are available to write to.  The
+existing solutions all offer it in one form or another, as well as do
+programming languages and operating systems via 'new' and 'delete'
+facilities, and of course 'malloc' and 'free' originally.  See:
+    http://en.wikipedia.org/wiki/Dynamic_memory_allocation
+    http://en.wikipedia.org/wiki/Malloc
+    http://en.wikipedia.org/wiki/Mmap
+    http://en.wikipedia.org/wiki/Memory_leak
+The catch, and the crux of the proposal, is that the metadata must be
+stored in shared memory along with the data themselves.  Assuming they
+are, a program can acquire the offset of an unused block of a
+sufficient size for its data, then write it to the file at that
+offset.  The metadata can maintain the offset of one root member, to
+serve as a 'table of contents' or header for the remainder of the
+file.  It can be grown and reassigned as needed.
+
+A collaborator writes: It could be quite useful for highly concurrent
+systems: the overhead involved with interprocess communication can be
+overwhelming, and something more flexible than normal object
+persistence to disk might be worth having.
+
+It is somewhat startling that no such module is in existence already.
+'new' and 'delete' are prevalent in object-oriented languages,
+including in the forms of mutable literal objects, but are altogether
+unable to handle special subregions of memory.  The alternate 'new'
+statement in C++ provides for initalization of an object at a custom
+address, but still lacks the ability to allocate a custom address,
+with regard to which bytes of a subregion of memory are already
+dedicated, and which are available for fresh allocation.
+
+Python Approaches
+
+The usual problems with data persistence and sharing appear.  The
+format of the external data is only established conventionally, and
+conversions between Python objects and raw memory bytes take the usual
+overhead.  'struct.Struct', 'ctypes.Structure', and 'pickle.Pickler'
+currently offer this functionality, and the buffer offset obtained
+from 'alloc' can be used with all three.
+
+Ex 1.
+    s= struct.Struct( 'III' )
+    x= alloc( s.size )
+    s.pack_into( buf, x, 2, 4, 6 )
+Struct in its current form does not permit random access into
+structure contents; a user must read or write the entire converted
+structure in order to update one field.  Alternative:
+    s= struct.Struct( 'I' )
+    x1, x2, x3= alloc( s.size ), alloc( s.size ), alloc( s.size )
+    s.pack_into( buf, x1, 2 )
+    s.pack_into( buf, x2, 4 )
+    s.pack_into( buf, x3, 6 )
+
+Ex 2.
+    class Items( ctypes.Structure ):
+        _fields_= [
+            ( 'x1', ctypes.c_float ),
+            ( 'y1', ctypes.c_float ) ]
+    x= alloc( ctypes.sizeof( Items ) )
+    c= ctypes.cast( buf+ x, ctypes.POINTER( Items ) ).contents
+    c.x1, c.y1= 2, 4
+The 'buf' variable is obtained on an object which supports the buffer
+protocal from a call to PyObject_AsWriteBuffer.
+
+Ex 3.
+    s= pickle.dumps( ( 2, 4, 6 ) )
+    x= alloc( len( s ) )
+    buf[ x: x+ len( s ) ]= s
+'dumps' is still slow and nor does permit random access into contents.
+
+Use Cases Revisited
+
+Use Case 1: Hierarchical ElementTree-style data
+Solution: Dynamically allocate the tree and its elements.
+
+Node: tag: a
+Node: tag: b
+Node: tag: c
+Node: text: Foo
+
+The user wants to change "Foo" to "Foobar".
+
+Node: tag: a
+Node: tag: b
+Node: tag: c
+Node: text: Foobar
+
+Deallocate 'Node: text: Foo', allocate 'Node: text: Foobar', and store
+the new offset into 'Node: tag: c'.  Total writes 6 bytes 'foobar', a
+one-word offset, and approximately 5- 10-word metadata update.
+
+Use Case 2: Web session logger
+Dynamically allocate a linked list of data points.
+
+Data: 'friendster.com'
+Data: 'My Account'
+
+Allocate one block for each string, adding it to a linked list.  As
+listeners acknowledge each data point, remove it from the linked list.
+Keep the head node in the 'root offset' metadata field.
+
+Restrictions
+
+It is not possible for persistent memory to refer to live memory.  Any
+objects it refers to must also be located in file.  Their mapped
+addresses must not be stored, only their offsets into it.  However,
+live references to persistent memory are eminently possible.
+
+Current Status
+
+A pure Python alloc-free implementation based on the GNU PAVL tree
+library is on Google Code.  It is only in proof-of-concept form and
+not commented, but does contain a first-pass test suite.  See:
+    http://code.google.com/p/pymmapstruct/source/browse/#svn/trunk
+The ctypes solution for access is advised.
