@@ -62,8 +62,8 @@ created with any 'leftovers'.
 7
 
 Therefore, a block greater than or equal to a requested size can be
-located in log( N ) time, time proportional to the number of free
-nodes in the tree.
+located in log( N ) time, time proportional to the logarithm of the
+number of free nodes in the tree.
 
 Note that a file with fewer remaining bytes can take more nodes; the
 file starts with one free block, makes two allocations, and frees the
@@ -73,7 +73,3 @@ small allocations inefficient, as 3 words accompany every individual
 reservation.
 
 Direct questions and comments to castironpi at gmail dot com.
-
->>> open( 'allocbuf.txt', 'w' ).write( '\n'.join( ( '\n'.join( x ) for
-x in [ textwrap.wrap( x ) for x in open( 'allocbuf.raw.txt'
-).readlines( ) ] ) ) )

@@ -1,6 +1,7 @@
 '''
 In-buffer dynamic-allocation module, providing 'alloc' and 'free' service to
-generic buffers with an implementation on memory-mapped files.
+generic buffers with an implementation on memory-mapped files.  No warranty
+of any kind is made.
 
 If you are unfamiliar with dynamic memory allocation, read an article from:
 	http://www.google.com/search?q=dynamic+memory+allocation
@@ -16,12 +17,12 @@ is meaningless after freeing the metadata.
 Further distinguish from recording the metadata in a separate block in the file,
 which would require loading the entire structure into memory before making any
 changes or useful queries to it.  Instead, store it in place, in the vicinity
-of the free and used nodes.  Then, merely search the tree for a new node or to
-replace it; its structure is already active, live, and valid.
+of the free and used nodes.  Then, merely search the tree to place a new node
+or remove one; its structure is already active, live, and valid.
 '''
 
 '''
-File head:
+Head of file containing tree:
 word 0 nil
 word 1 max
 word 2 record
@@ -58,17 +59,6 @@ packI= struct.Struct( 'H' )
 packi= struct.Struct( 'h' )
 word= 2
 
-class Buffer(object):
-	'''Abstract base class, probably not necessary.
-
-	'mmap' is one known specialization, others may implement set/geti/I in other ways
-	
-	'''
-	def setI( self, offt, val ): raise NotImplemented
-	def getI( self, offt ): raise NotImplemented
-	def seti( self, offt, val ): raise NotImplemented
-	def geti( self, offt ): raise NotImplemented
-	def print_( self ): raise NotImplemented
 
 class Node(object):
 	'''ctypes substitute for accessing bytes.'''
@@ -221,7 +211,7 @@ class AdjNode( Node ):
 		return self.__class__( self.prevkey, self._tree )
 	prev= property( _getprev )
 
-class BufferTree( Buffer ):
+class BufferTree( object ):
 	''' tree class with 'add_at' and 'remove_at' methods, and buffer header information.  see:
 			http://www.stanford.edu/~blp/avl/libavl.html/index.html#toc_AVL-Trees-with-Parent-Pointers
 		(excellent algorithm with docs, lots of hard work)
@@ -837,7 +827,8 @@ def concurrency_test( ):
 	thread.start_new_thread( th_w, ( 2, ) )
 	time.sleep( .1 )
 	th_r( )
-#concurrency_test( )			
+#if __name__== '__main__':
+#	concurrency_test( )			
 
 def insert_stress():
 	''' test of add_at.  insert nodes, assuming size 30, until file is full.'''
@@ -856,7 +847,8 @@ def insert_stress():
 			mt.check_used()
 			i+= 30
 		mt.close()
-#insert_stress()
+#if __name__== '__main__':
+#	insert_stress()
 
 def stress():
 	''' stress-test alloc/free.  randomly choose either alloc of random size (if
@@ -884,7 +876,7 @@ def stress():
 		print
 
 	#log= open( 'mappedtree.txt', 'w' )
-	for count in range( 10000 ):#while 1:
+	for count in range( 1000 ):#while 1:
 		print len( mems ), #print current count of allocation
 
 		mt.check_used()
@@ -922,7 +914,8 @@ def stress():
 	mt.flush()
 	mt.close()
 	print time.clock( ) #10 seconds on author's run
-#stress( )
+#if __name__== '__main__':
+#	stress( )
 
 def useful_test( ):
 	import random as ran
@@ -952,4 +945,12 @@ def useful_test( ):
 	for i in range( 8 ):
 		print 'read', mt.getI( b+ i* word )
 	mt.close( )
-useful_test( )
+
+if __name__ == '__main__':
+	debug= 1
+	if debug == 0:
+		useful_test( )
+	elif debug == 1:
+		stress()
+	else:
+		print 'bad debug value'
